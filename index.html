@@ -50,8 +50,9 @@ body { margin: 0; background: var(--ground); color: var(--ink); font-family: var
 .tools { position: fixed; right: 16px; bottom: calc(130px + env(safe-area-inset-bottom, 0px)); z-index: 6; display: flex; flex-direction: column; gap: 8px; direction: rtl; }
 .tools button { border: 1px solid var(--line); cursor: pointer; font: 800 13px var(--font); color: var(--ink); background: var(--glass); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); padding: 9px 12px 8px; border-radius: 12px; }
 .tools button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-#planbox { position: fixed; inset: 0; z-index: 9; background: rgba(5, 8, 16, .94); touch-action: none; overflow: hidden; direction: ltr; }
-#planstage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+#planbox { position: fixed; inset: 0; z-index: 9; background: rgba(5, 8, 16, .94); direction: ltr; }
+#planscroll { position: absolute; left: 0; right: 0; top: calc(70px + env(safe-area-inset-top, 0px)); bottom: calc(56px + env(safe-area-inset-bottom, 0px)); overflow: auto; -webkit-overflow-scrolling: touch; }
+#planstage { position: relative; margin: 0 auto; }
 #planstage img { display: block; width: 100%; height: auto; border-radius: 8px; user-select: none; -webkit-user-drag: none; }
 .spot { position: absolute; width: 0; height: 0; }
 .spot button { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; border-radius: 50%; border: 3px solid #fff; background: var(--gold); cursor: pointer; box-shadow: 0 0 0 0 rgba(255, 200, 60, .7); animation: pulse 1.8s infinite; }
@@ -79,9 +80,9 @@ body { margin: 0; background: var(--ground); color: var(--ink); font-family: var
   <button type="button" id="planbtn">📐 المخطط</button>
 </div>
 <div id="planbox" hidden>
-  <div id="planstage"><img id="planimg" src="plan.jpg" alt="المخطط الأصلي" draggable="false"><div id="me"><b></b><i></i></div></div>
+  <div id="planscroll"><div id="planstage"><img id="planimg" src="plan.jpg" alt="المخطط الأصلي" draggable="false"><div id="me"><b></b><i></i></div></div></div>
   <div class="planbar"><button type="button" id="planclose" aria-label="سكّر">✕</button><button type="button" id="zin" aria-label="قرّب">+</button><button type="button" id="zout" aria-label="بعّد">−</button></div>
-  <p class="planhint">قرّب بإصبعين وحرّك بإصبع · كبوس عالنقطة الصفرا لتروح عالغرفة</p>
+  <p class="planhint">قرّب بـ + وحرّك بإصبعك · كبوس عالنقطة الصفرا لتروح عالغرفة</p>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pannellum/2.5.6/pannellum.js"></script>
 <script>
@@ -179,15 +180,22 @@ body { margin: 0; background: var(--ground); color: var(--ink); font-family: var
     d.querySelector('button').addEventListener('click', ev => { ev.stopPropagation(); planbox.hidden = true; viewer.loadScene(cur().st + '_' + id, 'same', ROOMS[id].yaw); });
     stage.appendChild(d);
   }
-  let sc = 1, tx = 0, ty = 0, base = 1;
-  const apply = () => { stage.style.transform = `translate(${tx}px,${ty}px) scale(${sc})`; };
+  const scroller = document.getElementById('planscroll');
+  let baseW = 300, sc = 1;
   function fit() {
-    const W = planbox.clientWidth, H = planbox.clientHeight, w = Math.min(W - 32, (H - 140) * IMG_W / IMG_H);
-    stage.style.width = w + 'px'; base = 1; sc = 1; tx = (W - w) / 2; ty = (H - w * IMG_H / IMG_W) / 2; apply();
+    const W = scroller.clientWidth, H = scroller.clientHeight;
+    baseW = Math.max(200, Math.min(W - 24, H * IMG_W / IMG_H));
+    sc = 1; stage.style.width = baseW + 'px';
+    stage.style.marginTop = Math.max(0, (H - baseW * IMG_H / IMG_W) / 2) + 'px';
   }
-  function zoomAt(f, cx, cy) {
-    const ns = Math.min(5, Math.max(1, sc * f)); f = ns / sc;
-    tx = cx - (cx - tx) * f; ty = cy - (cy - ty) * f; sc = ns; apply();
+  function zoom(f) {
+    const cx = (scroller.scrollLeft + scroller.clientWidth / 2) / (baseW * sc);
+    const cy = (scroller.scrollTop + scroller.clientHeight / 2) / (baseW * sc * IMG_H / IMG_W);
+    sc = Math.min(4, Math.max(1, sc * f));
+    stage.style.width = baseW * sc + 'px';
+    stage.style.marginTop = Math.max(0, (scroller.clientHeight - baseW * sc * IMG_H / IMG_W) / 2) + 'px';
+    scroller.scrollLeft = cx * baseW * sc - scroller.clientWidth / 2;
+    scroller.scrollTop = cy * baseW * sc * IMG_H / IMG_W - scroller.clientHeight / 2;
   }
   function markHere() {
     const c = cur();
@@ -196,30 +204,12 @@ body { margin: 0; background: var(--ground); color: var(--ink); font-family: var
     me.style.left = l + '%'; me.style.top = t + '%';
     me.querySelector('b').style.transform = 'rotate(' + viewer.getYaw() + 'deg)';
   }
-  document.getElementById('planbtn').onclick = () => { planbox.hidden = false; fit(); markHere(); };
+  document.getElementById('planbtn').onclick = () => { planbox.hidden = false; fit(); try { markHere(); } catch (e) {} };
   document.getElementById('planclose').onclick = () => { planbox.hidden = true; };
-  document.getElementById('zin').onclick = () => zoomAt(1.5, planbox.clientWidth / 2, planbox.clientHeight / 2);
-  document.getElementById('zout').onclick = () => zoomAt(1 / 1.5, planbox.clientWidth / 2, planbox.clientHeight / 2);
-  planbox.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY); }, { passive: false });
-  const pts = new Map();
-  let last = null;
-  planbox.addEventListener('pointerdown', e => {
-    if (e.target.closest('button')) return;
-    planbox.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); last = null;
-  });
-  planbox.addEventListener('pointermove', e => {
-    if (!pts.has(e.pointerId)) return;
-    const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
-    if (pts.size === 1) { tx += e.clientX - prev[0]; ty += e.clientY - prev[1]; apply(); }
-    else if (pts.size === 2) {
-      const [a, b] = [...pts.values()], dist = Math.hypot(a[0] - b[0], a[1] - b[1]), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-      if (last) { tx += mid[0] - last.mid[0]; ty += mid[1] - last.mid[1]; zoomAt(dist / last.dist, mid[0], mid[1]); }
-      last = { dist, mid };
-    }
-  });
-  const up = e => { pts.delete(e.pointerId); last = null; };
-  planbox.addEventListener('pointerup', up); planbox.addEventListener('pointercancel', up);
-  addEventListener('resize', () => { if (!planbox.hidden) { fit(); } });
+  document.getElementById('zin').onclick = () => zoom(1.6);
+  document.getElementById('zout').onclick = () => zoom(1 / 1.6);
+  scroller.addEventListener('wheel', e => { if (e.ctrlKey || Math.abs(e.deltaY) > 0) { e.preventDefault(); zoom(e.deltaY < 0 ? 1.15 : 1 / 1.15); } }, { passive: false });
+  addEventListener('resize', () => { if (!planbox.hidden) fit(); });
   const gyro = document.getElementById('gyro');
   if (matchMedia('(pointer: coarse)').matches && window.DeviceOrientationEvent) {
     gyro.hidden = false;
